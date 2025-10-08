@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from 'react';
+import { useProjectPusher } from '@/hooks/useSocket';
 
 type Ticket = { id: string; title: string; status: string; description: string };
 
@@ -7,6 +8,7 @@ export default function TicketBoard({ projectId }: { projectId: string }) {
 	const [tickets, setTickets] = useState<Ticket[]>([]);
 	const [title, setTitle] = useState("");
 	const [description, setDescription] = useState("");
+	const { pusher } = useProjectPusher(projectId);
 
 	async function load() {
 		const res = await fetch(`/api/tickets?projectId=${projectId}`);
@@ -16,6 +18,30 @@ export default function TicketBoard({ projectId }: { projectId: string }) {
 	useEffect(() => {
 		void load();
 	}, [projectId]);
+
+	// Listen for real-time updates
+	useEffect(() => {
+		if (!pusher) return;
+
+		const channel = pusher.subscribe(`project-${projectId}`);
+
+		const handleTicketCreated = (ticket: Ticket) => {
+			setTickets(prev => [ticket, ...prev]);
+		};
+
+		const handleTicketUpdated = (updatedTicket: Ticket) => {
+			setTickets(prev => prev.map(t => t.id === updatedTicket.id ? updatedTicket : t));
+		};
+
+		channel.bind('ticket-created', handleTicketCreated);
+		channel.bind('ticket-updated', handleTicketUpdated);
+
+		return () => {
+			channel.unbind('ticket-created', handleTicketCreated);
+			channel.unbind('ticket-updated', handleTicketUpdated);
+			pusher.unsubscribe(`project-${projectId}`);
+		};
+	}, [pusher, projectId]);
 
 	async function createTicket() {
 		if (!title) return;
@@ -27,16 +53,31 @@ export default function TicketBoard({ projectId }: { projectId: string }) {
 		if (res.ok) {
 			await load();
 			setTitle(''); setDescription('');
+		} else {
+			const error = await res.json();
+			console.error('Failed to create ticket:', error);
 		}
 	}
 
 	async function updateStatus(id: string, status: string) {
+		// Get the user's email from session or local storage
+		const userEmail = localStorage.getItem('userEmail') || 'user@example.com'; // Fallback to example.com if not found
+		
 		const res = await fetch('/api/tickets', {
 			method: 'PATCH',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ id, status })
+			body: JSON.stringify({ 
+				id, 
+				status, 
+				updatedBy: userEmail 
+			})
 		});
-		if (res.ok) await load();
+		if (res.ok) {
+			await load();
+		} else {
+			const error = await res.json();
+			console.error('Failed to update ticket:', error);
+		}
 	}
 
 	return (

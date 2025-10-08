@@ -37,6 +37,12 @@ export default function Home() {
         body: JSON.stringify({ email, otp })
       });
       if (!res.ok) throw new Error('Invalid OTP');
+      
+      // Save the user's email to localStorage
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('userEmail', email);
+      }
+      
       setStep('done');
       window.location.href = '/dashboard';
     } catch (e: any) {

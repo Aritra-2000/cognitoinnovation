@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { verifyOtp } from '@/lib/otp';
@@ -34,7 +36,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Server misconfigured' }, { status: 500 });
     }
 
-    const token = jwt.sign({ sub: updated.id, email: updated.email }, jwtSecret, { expiresIn: '7d' });
+    // Include the user's name in the JWT token if available
+    const token = jwt.sign({ 
+      sub: updated.id, 
+      email: updated.email,
+      name: updated.name || updated.email.split('@')[0] // Use name if available, otherwise use email username
+    }, jwtSecret, { expiresIn: '7d' });
 
     const cookie = serialize('session', token, {
       httpOnly: true,
@@ -43,6 +50,9 @@ export async function POST(request: Request) {
       path: '/',
       maxAge: 60 * 60 * 24 * 7,
     });
+
+    console.log('Setting session cookie for user:', updated.email);
+    console.log('JWT_SECRET configured:', !!jwtSecret);
 
     const res = NextResponse.json({ ok: true, userId: updated.id });
     res.headers.set('Set-Cookie', cookie);

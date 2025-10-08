@@ -1,5 +1,5 @@
 "use client";
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useSuperUserStore } from '../store/useSuperUserStore';
 import type { SuperUserState } from '../store/useSuperUserStore';
 
@@ -9,6 +9,9 @@ export default function SuperUserToggle() {
 	const disable = useSuperUserStore((s: SuperUserState) => s.disable);
 	const [password, setPassword] = useState("");
 	const [error, setError] = useState<string|null>(null);
+	const [mounted, setMounted] = useState(false);
+
+	useEffect(() => { setMounted(true); }, []);
 
 	async function onToggle() {
 		setError(null);
@@ -16,6 +19,8 @@ export default function SuperUserToggle() {
 		const ok = await enable(password);
 		if (!ok) setError('Invalid password');
 	}
+
+	if (!mounted) return null;
 
 	return (
 		<div className="flex items-center gap-2">
