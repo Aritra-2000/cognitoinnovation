@@ -1,4 +1,4 @@
-import nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 
 type SendEmailParams = {
 	to: string;
@@ -7,24 +7,33 @@ type SendEmailParams = {
 };
 
 export async function sendEmail({ to, subject, bodyText }: SendEmailParams): Promise<void> {
-	const host = process.env.SMTP_HOST;
-	const port = process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : undefined;
-	const user = process.env.SMTP_USER;
-	const pass = process.env.SMTP_PASS;
-	const from = process.env.EMAIL_FROM ?? 'no-reply@example.com';
+	const apiKey = process.env.RESEND_API_KEY;
+	const configuredFrom = process.env.EMAIL_FROM;
+	const defaultFrom = 'Acme <onboarding@resend.dev>';
+	const from = configuredFrom ?? defaultFrom;
+	if (!apiKey) {
+		if (process.env.NODE_ENV !== 'production') {
+			console.warn('RESEND_API_KEY missing; skipping email send in dev');
+			return;
+		}
+		throw new Error('RESEND_API_KEY is missing');
+	}
+	const resend = new Resend(apiKey);
+	const attempt = await resend.emails.send({ from, to, subject, text: bodyText });
+	if (!attempt.error) return;
 
-	if (!host || !port || !user || !pass) {
-		throw new Error('SMTP configuration is missing');
+	// If domain not verified, retry with onboarding sender automatically
+	const e: any = attempt.error;
+	const domainUnverified = e?.statusCode === 403 && typeof e?.message === 'string' && e.message.includes('domain is not verified');
+	if (domainUnverified && from !== defaultFrom) {
+		const retry = await resend.emails.send({ from: defaultFrom, to, subject, text: bodyText });
+		if (!retry.error) return;
+		console.error('Resend email error (retry with onboarding failed):', retry.error);
+		throw new Error('Email send failed');
 	}
 
-	const transporter = nodemailer.createTransport({
-		host,
-		port,
-		secure: port === 465, // true for 465, false for others
-		auth: { user, pass },
-	});
-
-	await transporter.sendMail({ from, to, subject, text: bodyText });
+	console.error('Resend email error:', attempt.error);
+	throw new Error('Email send failed');
 }
 
 
