@@ -24,7 +24,8 @@ export async function POST(request: Request) {
     await sendEmail({
       to: email,
       subject: 'Your Login OTP',
-      bodyText: `Your OTP is ${otp}. It expires in 5 minutes.`,
+      text: `Your OTP is ${otp}. It expires in 5 minutes.`,
+      content: `<p>Your OTP is <strong>${otp}</strong>. It expires in 5 minutes.</p>`
     });
 
     return NextResponse.json({ ok: true, userId: user.id });

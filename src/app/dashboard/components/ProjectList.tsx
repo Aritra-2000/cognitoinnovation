@@ -5,6 +5,9 @@ import Link from 'next/link';
 export default function ProjectList() {
 	const [projects, setProjects] = useState<any[]>([]);
 	const [name, setName] = useState("");
+	const [mounted, setMounted] = useState(false);
+
+	useEffect(() => { setMounted(true); }, []);
 
 	useEffect(() => {
 		void fetch('/api/projects').then((r) => r.json()).then(setProjects).catch(() => setProjects([]));
@@ -15,14 +18,19 @@ export default function ProjectList() {
 		const res = await fetch('/api/projects', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ name, createdBy: 'anonymous' })
+			body: JSON.stringify({ name })
 		});
 		if (res.ok) {
 			const p = await res.json();
 			setProjects((prev) => [p, ...prev]);
 			setName('');
+		} else {
+			const error = await res.json();
+			console.error('Failed to create project:', error);
 		}
 	}
+
+	if (!mounted) return null;
 
 	return (
 		<div className="space-y-3">
