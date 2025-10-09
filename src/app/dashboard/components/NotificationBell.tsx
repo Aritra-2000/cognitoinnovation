@@ -1,74 +1,100 @@
 "use client";
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
+import { Bell } from 'lucide-react';
 import { usePusher } from '@/hooks/useSocket';
+import { apiGet } from '@/lib/api-client';
 
-interface Activity {
-  id: string;
-  message: string;
-  createdAt: string;
-}
-
-export default function NotificationBell() {
-  const [activities, setActivities] = useState<Activity[]>([]);
+export default function NotificationBell({ projectId }: { projectId?: string }) {
   const [unreadCount, setUnreadCount] = useState(0);
   const { pusher } = usePusher();
+  const [isAnimating, setIsAnimating] = useState(false);
 
+  // Fetch unread count (per project if provided, else global for user)
   useEffect(() => {
-    // Load recent activities
-    fetch('/api/notifications')
-      .then(res => res.json())
-      .then(data => {
-        setActivities(data.slice(0, 5)); // Show last 5
-        setUnreadCount(data.length);
-      })
-      .catch(() => {});
-  }, []);
+    const fetchUnreadCount = async () => {
+      const query = projectId ? `?projectId=${projectId}` : '';
+      try {
+        const count = await apiGet<number>(`/api/notifications/unread/count${query}`);
+        setUnreadCount(count || 0);
+      } catch (error) {
+        // Fallback: compute unread count from notifications list if the endpoint is unavailable
+        try {
+          const activities = await apiGet<Array<{ isRead: boolean }>>(`/api/notifications${query}${query ? '&' : '?'}limit=100`);
+          const count = (activities || []).filter((a) => a && a.isRead === false).length;
+          setUnreadCount(count);
+        } catch (err) {
+          console.error('Error fetching unread count:', error);
+        }
+      }
+    };
 
-  // Listen for real-time notifications
+    fetchUnreadCount();
+    // Refresh count every 30 seconds to catch any missed real-time updates
+    const interval = setInterval(fetchUnreadCount, 30000);
+    return () => clearInterval(interval);
+  }, [projectId]);
+
+  // Set up real-time updates
   useEffect(() => {
     if (!pusher) return;
 
-    const channel = pusher.subscribe('global');
-    
-    const handleNotification = (data: any) => {
-      setActivities(prev => [data, ...prev.slice(0, 4)]);
+    const globalChannel = pusher.subscribe('global');
+    const handleGlobalNotification = () => {
       setUnreadCount(prev => prev + 1);
+      setIsAnimating(true);
+      setTimeout(() => setIsAnimating(false), 1000);
     };
+    globalChannel.bind('notification', handleGlobalNotification);
 
-    channel.bind('notification', handleNotification);
+    // Also listen to project-specific ticket updates if projectId is present
+    let projectChannel: ReturnType<typeof pusher.subscribe> | null = null;
+    const handleProjectTicketUpdate = () => {
+      setUnreadCount(prev => prev + 1);
+      setIsAnimating(true);
+      setTimeout(() => setIsAnimating(false), 1000);
+    };
+    if (projectId) {
+      projectChannel = pusher.subscribe(`project-${projectId}`);
+      projectChannel.bind('ticket:updated', handleProjectTicketUpdate);
+    }
 
     return () => {
-      channel.unbind('notification', handleNotification);
+      globalChannel.unbind('notification', handleGlobalNotification);
       pusher.unsubscribe('global');
+      if (projectChannel) {
+        projectChannel.unbind('ticket:updated', handleProjectTicketUpdate);
+        pusher.unsubscribe(`project-${projectId}`);
+      }
     };
-  }, [pusher]);
+  }, [pusher, projectId]);
 
   return (
     <div className="relative">
-      <Link 
-        href="/notifications"
-        className="flex items-center justify-center w-10 h-10 rounded-full hover:bg-gray-100 relative"
+      <button
+        onClick={() => window.location.href = '/notifications'}
+        className={`relative flex items-center justify-center w-10 h-10 rounded-lg transition-all duration-200 ${
+          unreadCount > 0 
+            ? 'bg-blue-50 hover:bg-blue-100 text-blue-600' 
+            : 'bg-gray-50 hover:bg-gray-100 text-gray-600'
+        } ${isAnimating ? 'animate-wiggle' : ''}`}
       >
-        <svg 
-          className="w-6 h-6 text-gray-600" 
-          fill="none" 
-          stroke="currentColor" 
-          viewBox="0 0 24 24"
-        >
-          <path 
-            strokeLinecap="round" 
-            strokeLinejoin="round" 
-            strokeWidth={2} 
-            d="M15 17h5l-5 5v-5zM4.828 7l2.586 2.586a2 2 0 002.828 0L12 7H4.828zM4 12h16M4 16h16" 
-          />
-        </svg>
+        <Bell 
+          className={`w-5 h-5 transition-transform duration-200 ${
+            isAnimating ? 'scale-110' : 'scale-100'
+          }`}
+        />
+        
         {unreadCount > 0 && (
-          <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+          <span className="absolute -top-1 -right-1 bg-gradient-to-br from-red-500 to-red-600 text-white text-xs font-bold rounded-full h-5 min-w-[20px] px-1 flex items-center justify-center shadow-lg animate-pulse">
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>
         )}
-      </Link>
+        
+        {/* Pulse ring effect when there are notifications */}
+        {unreadCount > 0 && (
+          <span className="absolute inset-0 rounded-lg bg-blue-400 opacity-0 animate-ping-slow" />
+        )}
+      </button>
     </div>
   );
 }

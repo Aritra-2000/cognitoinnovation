@@ -1,8 +1,31 @@
-import NextAuth from 'next-auth';
+import NextAuth, { type NextAuthConfig, type Session, type User } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import { verifyToken } from '@/lib/auth';
+import { JWT } from 'next-auth/jwt';
 
-export const authOptions = {
+declare module 'next-auth' {
+  interface User {
+    id: string;
+    email?: string | null;
+    name?: string | null;
+    isAdmin?: boolean;
+  }
+
+  interface Session {
+    user: User;
+  }
+}
+
+declare module 'next-auth/jwt' {
+  interface JWT {
+    id: string;
+    email?: string | null;
+    name?: string | null;
+    isAdmin?: boolean;
+  }
+}
+
+export const authOptions: NextAuthConfig = {
   providers: [
     CredentialsProvider({
       name: 'Credentials',
@@ -14,23 +37,37 @@ export const authOptions = {
           return null;
         }
         
-        const user = verifyToken(credentials.token);
-        return user ? { id: user.sub, email: user.email, name: user.name, isAdmin: user.isAdmin } : null;
+const token = typeof credentials.token === 'string' ? credentials.token : '';
+        const user = verifyToken(token);
+        return user ? { 
+          id: user.id || user.sub,  // Use id if it exists, otherwise fall back to sub
+          email: user.email, 
+          name: user.name, 
+          isAdmin: user.isAdmin 
+        } : null;
       },
     }),
   ],
   callbacks: {
-    async session({ session, token }) {
+    async session({ session, token }: { session: Session; token: JWT }) {
       if (token) {
-        session.user.id = token.sub;
-        session.user.isAdmin = token.isAdmin;
+        session.user = {
+          ...session.user,
+          id: token.sub || '',
+          isAdmin: token.isAdmin,
+          name: token.name || null,
+          email: token.email || null
+        };
       }
       return session;
     },
-    async jwt({ token, user }) {
+    async jwt({ token, user }: { token: JWT; user?: User }) {
       if (user) {
         token.sub = user.id;
-        token.isAdmin = user.isAdmin;
+        token.id = user.id;
+        token.isAdmin = user.isAdmin || false;
+        token.name = user.name || null;
+        token.email = user.email || null;
       }
       return token;
     },

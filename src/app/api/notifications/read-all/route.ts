@@ -1,30 +1,26 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { getCurrentUserFromHeaders } from '@/lib/auth';
 
-export async function POST() {
+// POST /api/notifications/read-all
+// Marks all activities for the authenticated user as read
+export async function POST(req: Request) {
   try {
-    // Get the current user ID from the session (you'll need to implement this)
-    // For now, we'll use a placeholder
-    const userId = 'current-user-id';
-    
-    // Mark all unread notifications as read
+    const user = await getCurrentUserFromHeaders(req.headers);
+    if (!user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     await prisma.activity.updateMany({
-      where: { 
-        userId,
-        isRead: false 
-      },
-      data: {
-        isRead: true,
-        readAt: new Date(),
-      },
+      where: { userId: user.id, isRead: false },
+      data: { isRead: true, readAt: new Date() },
     });
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ ok: true });
   } catch (error) {
-    console.error('Error marking all notifications as read:', error);
-    return NextResponse.json(
-      { error: 'Failed to mark all notifications as read' },
-      { status: 500 }
-    );
+    console.error('Error marking all as read:', error);
+    return NextResponse.json({ error: 'Failed to mark all as read' }, { status: 500 });
   }
 }
+
+

@@ -1,47 +1,36 @@
-import { NextResponse } from 'next/server';
-import { getCurrentUserFromHeaders } from '@/lib/auth';
-import {prisma} from '@/lib/db';
+import { NextResponse } from "next/server";
+import {prisma} from "@/lib/db";
+import { getCurrentUserFromHeaders } from "@/lib/auth";
 
 export async function DELETE(
-  request: Request,
+  req: Request,
   { params }: { params: { id: string } }
 ) {
   try {
-    const user = getCurrentUserFromHeaders(request.headers);
-    if (!user) {
-      return new NextResponse(
-        JSON.stringify({ error: 'Unauthorized' }),
-        { status: 401, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
-
     const projectId = params.id;
+
     if (!projectId) {
-      return new NextResponse(
-        JSON.stringify({ error: 'Project ID is required' }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
-      );
+      return NextResponse.json({ error: "Project ID is required" }, { status: 400 });
     }
 
-    // First, delete all tickets associated with the project
+    const user = getCurrentUserFromHeaders(req.headers);
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Delete tickets first
     await prisma.ticket.deleteMany({
-      where: { projectId }
+      where: { projectId },
     });
 
-    // Then delete the project
-    const deletedProject = await prisma.project.delete({
-      where: { id: projectId }
+    // Delete the project
+    await prisma.project.delete({
+      where: { id: projectId },
     });
 
-    return new NextResponse(
-      JSON.stringify({ success: true, project: deletedProject }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } }
-    );
+    return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Error deleting project:', error);
-    return new NextResponse(
-      JSON.stringify({ error: 'Failed to delete project' }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
-    );
+    console.error("Error deleting project:", error);
+    return NextResponse.json({ error: "Failed to delete project" }, { status: 500 });
   }
 }

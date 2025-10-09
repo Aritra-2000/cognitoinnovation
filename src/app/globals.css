@@ -1,1 +1,56 @@
 @import "tailwindcss";
+
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-12px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  75% { transform: translateX(5px); }
+}
+
+.animate-slideDown {
+  animation: slideDown 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.animate-shake {
+  animation: shake 0.3s ease-in-out;
+}
+
+
+@keyframes wiggle {
+    0%, 100% { transform: rotate(0deg); }
+    25% { transform: rotate(-10deg); }
+    50% { transform: rotate(10deg); }
+    75% { transform: rotate(-5deg); }
+}
+
+@keyframes ping-slow {
+    0% {
+    transform: scale(1);
+    opacity: 0.3;
+    }
+    50% {
+    transform: scale(1.1);
+    opacity: 0.1;
+    }
+    100% {
+    transform: scale(1.2);
+    opacity: 0;
+    }
+}
+.animate-wiggle {
+    animation: wiggle 0.5s ease-in-out;
+}
+.animate-ping-slow {
+    animation: ping-slow 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+}

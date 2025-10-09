@@ -1,7 +1,14 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { triggerProjectUpdate, triggerGlobalUpdate } from '@/lib/pusher';
-import { getNotificationStrategy } from '@/lib/notification-strategies';
+// getNotificationStrategy is imported for future use
+import { getCurrentUserFromHeaders } from '@/lib/auth';
+
+interface TicketChanges {
+  title?: { from: string; to: string };
+  status?: { from: string; to: string };
+  description?: { from: string; to: string };
+}
 
 export async function GET(req: Request) {
   try {
@@ -13,44 +20,108 @@ export async function GET(req: Request) {
     const tickets = await prisma.ticket.findMany({ 
       where: { projectId }, 
       orderBy: { updatedAt: 'desc' },
-      select: {
-        id: true,
-        projectId: true,
-        title: true,
-        description: true,
-        status: true,
-        updatedBy: true,
-        updatedAt: true,
-        updateHistory: true
-      }
-    });
-    
-    // Parse updateHistory for each ticket, handling invalid JSON
-    const ticketsWithParsedHistory = tickets.map(ticket => {
-      let updateHistory = [];
-      if (ticket.updateHistory) {
-        try {
-          updateHistory = JSON.parse(ticket.updateHistory as string);
-          // Ensure updateHistory is an array
-          if (!Array.isArray(updateHistory)) {
-            updateHistory = [];
+      include: {
+        updates: {
+          orderBy: { timestamp: 'desc' },
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true
+              }
+            }
           }
-        } catch (error) {
-          console.warn('Failed to parse updateHistory for ticket:', ticket.id, error);
-          updateHistory = [];
         }
       }
-      return {
-        ...ticket,
-        updateHistory
-      };
     });
     
-    return NextResponse.json(ticketsWithParsedHistory);
+    return NextResponse.json(tickets);
   } catch (error) {
     console.error('Error fetching tickets:', error);
     return NextResponse.json(
       { error: 'Failed to fetch tickets' },
+    );
+  }
+}
+
+export async function POST(req: Request) {
+  try {
+    const user = await getCurrentUserFromHeaders(req.headers);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { projectId, title, description, status } = await req.json();
+    
+    if (!projectId || !title || !status) {
+      return NextResponse.json(
+        { error: 'Project ID, title, and status are required' }, 
+        { status: 400 }
+      );
+    }
+
+    // Create the ticket with the initial update
+    const ticket = await prisma.ticket.create({
+      data: {
+        projectId,
+        title,
+        description: description || '',
+        status,
+        updatedBy: user.email || 'unknown',
+        // Create the initial update
+        updates: {
+          create: {
+            userId: user.id,
+            changes: JSON.stringify({
+              title: { from: '', to: title },
+              status: { from: '', to: status },
+              ...(description ? { description: { from: '', to: description } } : {})
+            } as Record<string, unknown>)
+          }
+        }
+      },
+      include: {
+        updates: true
+      }
+    });
+
+    // Create Activity notifications for all project members except the actor
+    const projectMembers = await prisma.projectMember.findMany({
+      where: { projectId },
+      select: { userId: true }
+    });
+    // Notify all project members, including the actor, so the user sees their own activity
+    const recipients = Array.from(new Set([
+      ...projectMembers.map(m => m.userId).filter(Boolean),
+      user.id,
+    ] as string[]));
+    if (recipients.length > 0) {
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+      await prisma.activity.createMany({
+        data: recipients.map(userId => ({
+          userId,
+          // projectId omitted for compatibility with current Prisma client
+          message: `Ticket created: ${title}`,
+          expiresAt,
+        }))
+      });
+    }
+
+    // Trigger real-time updates
+    await triggerProjectUpdate(projectId, 'ticket:created', {});
+    await triggerGlobalUpdate('ticket:created', { projectId });
+    await triggerGlobalUpdate('notification', {
+      type: 'ticket:created',
+      projectId,
+      timestamp: new Date().toISOString(),
+    });
+
+    return NextResponse.json(ticket);
+  } catch (error) {
+    console.error('Error creating ticket:', error);
+    return NextResponse.json(
+      { error: 'Failed to create ticket' },
       { status: 500 }
     );
   }
@@ -58,153 +129,107 @@ export async function GET(req: Request) {
 
 export async function PATCH(req: Request) {
   try {
-    const { id, updatedBy, status, ...updates } = await req.json();
+    const user = await getCurrentUserFromHeaders(req.headers);
+    if (!user || !user.id) {
+      console.error('Unauthorized: No user ID found in session');
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { id, status, ...updates } = await req.json();
     if (!id) return NextResponse.json({ error: 'Missing ticket ID' }, { status: 400 });
-    
-    // Get the current ticket to preserve update history
-    const currentTicket = await prisma.ticket.findUnique({ 
+
+    // Get the current ticket to compare changes
+    const currentTicket = await prisma.ticket.findUnique({
       where: { id },
-      select: {
-        id: true,
-        projectId: true,
-        title: true,
-        description: true,
-        status: true,
-        updatedBy: true,
-        updatedAt: true,
-        updateHistory: true
-      }
+      include: { Project: true }  // Changed from 'project' to 'Project'
     });
-    
+
     if (!currentTicket) {
       return NextResponse.json({ error: 'Ticket not found' }, { status: 404 });
     }
-    
-    // Parse existing update history or initialize empty array
-    let updateHistory = [];
-    if (currentTicket.updateHistory) {
-      try {
-        updateHistory = typeof currentTicket.updateHistory === 'string' 
-          ? JSON.parse(currentTicket.updateHistory)
-          : Array.isArray(currentTicket.updateHistory)
-            ? currentTicket.updateHistory
-            : [];
-      } catch (error) {
-        console.error('Error parsing updateHistory:', error);
-        updateHistory = [];
-      }
-    }
-    
-    // Add current update to history if there's an updatedBy
-    if (updatedBy) {
-      updateHistory.push({
-        email: updatedBy,
-        timestamp: new Date().toISOString(),
-        status: status || currentTicket.status
-      });
-    }
-    
-    // Prepare update data
-    const updateData: any = {
-      ...updates,
-      updatedBy: updatedBy || 'Unknown',
-      updatedAt: new Date(),
-      updateHistory: JSON.stringify(updateHistory)
-    };
-    
+
+    // Prepare the update data
+    const updateData: Record<string, unknown> = { ...updates };
     if (status) {
       updateData.status = status;
-    }
-    
-    // Update the ticket
-    const ticket = await prisma.ticket.update({ 
-      where: { id }, 
-      data: updateData,
-      select: {
-        id: true,
-        projectId: true,
-        title: true,
-        description: true,
-        status: true,
-        updatedBy: true,
-        updatedAt: true
-      }
-    });
-    
-    // Emit real-time update with the full history
-    triggerProjectUpdate(ticket.projectId, 'ticket-updated', {
-      ...ticket,
-      updateHistory
-    });
-    
-    // Save notification to database and trigger real-time updates
-    if (status && updatedBy) {
-      try {
-        // First, get or create a user
-        const user = await prisma.user.upsert({
-          where: { email: updatedBy },
-          update: {},
-          create: {
-            email: updatedBy,
-            name: updatedBy.split('@')[0], // Simple name from email
+      updateData.updates = {
+        create: {
+          changes: {
+            status: status,
+            updatedAt: new Date().toISOString()
           },
-        });
-
-        // Save to database with the user's ID
-        // Get the user's display name (use name if available, otherwise use email username)
-        const displayName = user.name || updatedBy.split('@')[0];
-        
-        // Create a more descriptive message
-        const notificationMessage = `${displayName} moved "${ticket.title}" from ${currentTicket.status} to ${status}`;
-        
-        const activity = await prisma.activity.create({
-          data: {
-            userId: user.id,
-            message: notificationMessage
-          },
-          include: {
-            user: {
-              select: {
-                name: true,
-                email: true
-              }
+          user: {
+            connect: {
+              id: user.id
             }
           }
-        });
-        // Get notification strategy and send
-        try {
-          const notification = getNotificationStrategy();
-          await notification.sendNotification(
-            updatedBy,
-            notificationMessage,
-            updatedBy.includes('@') ? updatedBy : undefined
-          );
-        } catch (notificationError) {
-          console.error('Error sending notification:', notificationError);
         }
+      };
+      
+      console.log('Updating ticket with data:', JSON.stringify(updateData, null, 2));
+    }
 
-        // Trigger real-time update
-        const notificationData = {
-          id: activity.id,
-          userId: updatedBy,
-          message: notificationMessage,
-          isRead: false,
-          readAt: null,
-          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days from now
-          createdAt: new Date().toISOString(),
-          user: {
-            name: user.name,
-            email: user.email
-          }
-        };
-        
-        await triggerGlobalUpdate('notification', notificationData);
-      } catch (error) {
-        console.error('Error handling notification:', error);
+    // Update the ticket
+    const updatedTicket = await prisma.ticket.update({
+      where: { id },
+      data: updateData,
+      include: {
+        Project: true,
+        updates: {  // Changed from updateHistory to updates
+          orderBy: { timestamp: 'desc' },
+          take: 5
+        }
+      }
+    });
+
+    // Trigger real-time updates
+    if (currentTicket.projectId) {
+      await triggerProjectUpdate(currentTicket.projectId, 'ticket:updated', {
+        ...updatedTicket,
+        // Add any additional data you want to send to the client
+        updatedBy: user.email
+      });
+    }
+
+    // Send a global notification for the status change
+    if (status && status !== currentTicket.status) {
+      await triggerGlobalUpdate('notification', {
+        type: 'ticket:status-updated',
+        ticketId: updatedTicket.id,
+        ticketTitle: updatedTicket.title,
+        oldStatus: currentTicket.status,
+        newStatus: status,
+        updatedBy: user.email,
+        projectId: currentTicket.projectId,
+        timestamp: new Date().toISOString()
+      });
+
+      // Create Activity notifications for all project members except the actor
+      const projectMembers = await prisma.projectMember.findMany({
+        where: { projectId: currentTicket.projectId },
+        select: { userId: true }
+      });
+      // Notify all project members, including the actor
+      const recipients = Array.from(new Set([
+        ...projectMembers.map(m => m.userId).filter(Boolean),
+        user.id,
+      ] as string[]));
+      if (recipients.length > 0) {
+        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+        await prisma.activity.createMany({
+          data: recipients.map(userId => ({
+            userId,
+            // projectId omitted for compatibility
+            message: `Ticket status updated: ${updatedTicket.title} → ${status}`,
+            expiresAt,
+          }))
+        });
       }
     }
-    return NextResponse.json({...ticket, updateHistory});
+
+    return NextResponse.json(updatedTicket);
   } catch (error) {
+    console.error('Error updating ticket:', error);
     return NextResponse.json(
       { error: 'Failed to update ticket' },
       { status: 500 }

@@ -1,45 +1,51 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { getCurrentUserFromHeaders } from '@/lib/auth';
 
-// In your notifications API route (src/app/api/notifications/route.ts)
-// In src/app/api/notifications/route.ts
-export async function GET() {
+// GET /api/notifications
+// Returns the authenticated user's non-expired notifications (activities)
+// Optional query: ?projectId=...&limit=100
+export async function GET(req: Request) {
   try {
-    const activities = await prisma.activity.findMany({ 
-      orderBy: { createdAt: 'desc' }, 
-      take: 50,
+    const user = await getCurrentUserFromHeaders(req.headers);
+    if (!user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(req.url);
+    // projectId parameter is intentionally not used to maintain compatibility
+    // with existing clients that may not have the projectId field on Activity
+    const limitParam = searchParams.get('limit');
+    const take = Math.min(Math.max(parseInt(limitParam || '100', 10) || 100, 1), 200);
+
+    const now = new Date();
+
+    const activities = await prisma.activity.findMany({
+      where: {
+        userId: user.id,
+        expiresAt: { gt: now },
+      },
+      orderBy: { createdAt: 'desc' },
+      take,
       include: {
         user: {
           select: {
+            id: true,
             name: true,
-            email: true
-          }
-        }
-      }
+            email: true,
+          },
+        },
+      },
     });
-    
-    // Transform the data to ensure user information is included in the response
-    const activitiesWithUser = activities.map(activity => ({
-      ...activity,
-      user: activity.user || { email: 'user@example.com' } // Fallback to default user if not found
-    }));
-    
-    return NextResponse.json(activitiesWithUser);
+
+    return NextResponse.json(activities);
   } catch (error) {
     console.error('Error fetching activities:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch activities' }, 
+      { error: 'Failed to fetch activities' },
       { status: 500 }
     );
   }
-}
-
-export async function POST(request: Request) {
-	const { userId, message } = await request.json();
-	if (!userId || !message) return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
-	const activity = await prisma.activity.create({ data: { userId, message } });
-	// TODO: emit realtime notification via pusher/socket
-	return NextResponse.json(activity, { status: 201 });
 }
 
 
