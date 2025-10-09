@@ -31,7 +31,7 @@ export async function sendEmail({ to, subject, content, text }: SendEmailParams)
 	if (!attempt.error) return;
 
 	// If domain not verified, retry with onboarding sender automatically
-	const e: any = attempt.error;
+	const e = attempt.error as { statusCode?: number; message?: string };
 	const domainUnverified = e?.statusCode === 403 && typeof e?.message === 'string' && e.message.includes('domain is not verified');
 	if (domainUnverified && from !== defaultFrom) {
 		const retry = await resend.emails.send({ 

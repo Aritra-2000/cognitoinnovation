@@ -57,7 +57,7 @@ export async function POST(request: Request) {
     const res = NextResponse.json({ ok: true, userId: updated.id });
     res.headers.set('Set-Cookie', cookie);
     return res;
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: 'Bad request' }, { status: 400 });
   }
 }

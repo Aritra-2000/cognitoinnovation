@@ -35,21 +35,21 @@ export const pusherClient = new PusherClient(
 );
 
 // Log Pusher connection state changes
-pusherClient.connection.bind('state_change', (states: any) => {
+pusherClient.connection.bind('state_change', (states: { previous: string; current: string }) => {
   console.log('Pusher connection state changed:', states);
 });
 
-pusherClient.connection.bind('error', (err: any) => {
+pusherClient.connection.bind('error', (err: Error) => {
   console.error('Pusher connection error:', err);
 });
 
 pusherClient.connection.bind('connected', () => {
   console.log('Pusher connected successfully');});
 
-export function triggerProjectUpdate(projectId: string, event: string, data: any) {
+export function triggerProjectUpdate<T = unknown>(projectId: string, event: string, data: T) {
   pusherServer.trigger(`project-${projectId}`, event, data);
 }
 
-export function triggerGlobalUpdate(event: string, data: any) {
+export function triggerGlobalUpdate<T = unknown>(event: string, data: T) {
   pusherServer.trigger('global', event, data);
 }

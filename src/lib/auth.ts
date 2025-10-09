@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 
 export interface JWTPayload {
   sub: string;
+  id: string;
   email: string;
   name?: string;
   isAdmin?: boolean;
@@ -16,7 +17,20 @@ export function verifyToken(token: string): JWTPayload | null {
     if (!secret) {
       throw new Error('JWT_SECRET not configured');
     }
-    return jwt.verify(token, secret) as JWTPayload;
+    const decoded = jwt.verify(token, secret) as JWTPayload & { [key: string]: unknown };
+
+    // Normalize shape: ensure `id` is present, fallback to `sub`
+    const normalized: JWTPayload = {
+      sub: decoded.sub ?? decoded.id,
+      id: decoded.id ?? decoded.sub,
+      email: decoded.email,
+      name: decoded.name,
+      isAdmin: decoded.isAdmin,
+      iat: decoded.iat,
+      exp: decoded.exp,
+    };
+
+    return normalized;
   } catch (error) {
     console.error('Token verification failed:', error);
     return null;
