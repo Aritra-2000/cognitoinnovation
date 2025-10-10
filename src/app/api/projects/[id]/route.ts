@@ -18,14 +18,29 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Delete tickets first
-    await prisma.ticket.deleteMany({
-      where: { projectId },
-    });
+    // Perform cascading deletes in a transaction to satisfy FK constraints
+    await prisma.$transaction(async (tx) => {
+      // 1) Delete ticket updates for all tickets in the project
+      const tickets = await tx.ticket.findMany({
+        where: { projectId },
+        select: { id: true },
+      });
+      const ticketIds = tickets.map((t) => t.id);
+      if (ticketIds.length > 0) {
+        await tx.ticketUpdate.deleteMany({ where: { ticketId: { in: ticketIds } } });
+      }
 
-    // Delete the project
-    await prisma.project.delete({
-      where: { id: projectId },
+      // 2) Delete tickets
+      await tx.ticket.deleteMany({ where: { projectId } });
+
+      // 3) Delete activities that reference this project
+      await tx.activity.deleteMany({ where: { projectId } });
+
+      // 4) Delete project members (in case DB doesn't cascade)
+      await tx.projectMember.deleteMany({ where: { projectId } });
+
+      // 5) Finally delete the project
+      await tx.project.delete({ where: { id: projectId } });
     });
 
     return NextResponse.json({ success: true });
