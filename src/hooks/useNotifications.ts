@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback } from 'react';
-import { useSession } from 'next-auth/react';
 import { toast } from 'react-hot-toast';
 import { pusherClient } from '@/lib/pusher';
 import { apiGet, apiPost } from '@/lib/api-client';
@@ -12,7 +11,7 @@ interface Notification {
 }
 
 export function useNotifications(projectId: string) {
-  const { data: session } = useSession();
+  const [currentEmail, setCurrentEmail] = useState<string | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
@@ -28,7 +27,13 @@ export function useNotifications(projectId: string) {
   }, [projectId]);
 
   useEffect(() => {
-    if (!projectId || !session?.user?.email) return;
+    if (typeof window !== 'undefined') {
+      setCurrentEmail(localStorage.getItem('userEmail'));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!projectId) return;
 
     // Initial fetch of unread count
     fetchUnreadCount();
@@ -37,7 +42,7 @@ export function useNotifications(projectId: string) {
     const channel = pusherClient.subscribe(`project-${projectId}`);
 
     const handleTicketUpdated = (data: { id?: string; ticketId?: string; updatedBy?: string }) => {
-      if (data.updatedBy === session.user?.email) return; // Don't notify self
+      if (data.updatedBy && currentEmail && data.updatedBy === currentEmail) return; // Don't notify self
       
       const notification: Notification = {
         id: Date.now().toString(),
@@ -64,7 +69,7 @@ export function useNotifications(projectId: string) {
       channel.unbind('ticket-updated', handleTicketUpdated);
       pusherClient.unsubscribe(`project-${projectId}`);
     };
-  }, [projectId, session?.user?.email, fetchUnreadCount]);
+  }, [projectId, currentEmail, fetchUnreadCount]);
 
   const markAsRead = useCallback(async (id: string) => {
     try {

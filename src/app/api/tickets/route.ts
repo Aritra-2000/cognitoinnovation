@@ -88,7 +88,7 @@ export async function POST(req: Request) {
     });
     // Notify all project members, including the actor, so the user sees their own activity
     const recipients = Array.from(new Set([
-      ...projectMembers.map(m => m.userId).filter(Boolean),
+      ...projectMembers.map((m: { userId: string | null }) => m.userId).filter(Boolean),
       user.id,
     ] as string[]));
     if (recipients.length > 0) {
@@ -206,7 +206,7 @@ export async function PATCH(req: Request) {
       });
       // Notify all project members, including the actor
       const recipients = Array.from(new Set([
-        ...projectMembers.map(m => m.userId).filter(Boolean),
+        ...projectMembers.map((m: { userId: string | null }) => m.userId).filter(Boolean),
         user.id,
       ] as string[]));
       if (recipients.length > 0) {

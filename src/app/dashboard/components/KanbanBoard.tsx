@@ -228,25 +228,7 @@ export default function KanbanBoard({ projectId }: { projectId: string }) {
     return <Loading />;
   }
 
-  if (!isLoading && tickets.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[400px] p-8 text-center">
-        <h3 className="text-xl font-bold text-gray-900 mb-2">No tickets yet</h3>
-        <p className="text-gray-500 mb-6">Get started by creating your first ticket</p>
-        {isSuperUser && (
-          <button
-            onClick={() => setShowNewTicketForm('proposed')}
-            className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-medium rounded-xl hover:from-blue-700 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 shadow-lg hover:shadow-xl transition-all flex items-center gap-2"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            New Ticket
-          </button>
-        )}
-      </div>
-    );
-  }
+  // Show the board even if there are no tickets yet so users can add one
 
   return (
     <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>

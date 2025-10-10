@@ -35,12 +35,12 @@ export async function notifyTicketUpdate(ticketId: string, projectId: string, up
 
     // Send emails to offline users
     const offlineMembers = project.members
-      .filter(member => 
-        member.user?.email && 
+      .filter((member: { user?: { id: string; email?: string | null } | null }) => 
+        !!member.user?.email && 
         member.user.email !== updaterEmail &&
         !onlineUserIds.includes(member.user.id)
       )
-      .map(member => member.user!);
+      .map((member: { user?: { id: string; email: string } | null }) => member.user!);
 
     for (const member of offlineMembers) {
       await sendEmail({

@@ -1,21 +1,20 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route';
+import { getCurrentUserFromHeaders } from '@/lib/auth';
 
 export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Verify user is authenticated
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.email) {
+    // Verify user is authenticated via JWT in middleware-provided header
+    const user = getCurrentUserFromHeaders(request.headers);
+    if (!user?.email) {
       return new NextResponse('Unauthorized: Please log in', { status: 401 });
     }
 
     const { id: ticketId } = await params;
-    const userEmail = session.user.email;
+    const userEmail = user.email;
 
     // First, get the current user
     const currentUser = await prisma.user.findUnique({
