@@ -1,4 +1,4 @@
-import { Resend } from 'resend';
+import nodemailer from 'nodemailer';
 
 type SendEmailParams = {
   to: string;
@@ -8,46 +8,54 @@ type SendEmailParams = {
 };
 
 export async function sendEmail({ to, subject, content, text }: SendEmailParams): Promise<void> {
-	const apiKey = process.env.RESEND_API_KEY;
-	const configuredFrom = process.env.EMAIL_FROM;
-	const defaultFrom = 'Acme <onboarding@resend.dev>';
-	const from = configuredFrom ?? defaultFrom;
-	if (!apiKey) {
-		if (process.env.NODE_ENV !== 'production') {
-			console.warn('RESEND_API_KEY missing; skipping email send in dev');
-			return;
-		}
-		throw new Error('RESEND_API_KEY is missing');
-	}
-	const resend = new Resend(apiKey);
-	const attempt = await resend.emails.send({ 
-		from, 
-		to, 
-		subject, 
-		html: content,
-		text: text || content.replace(/<[^>]*>?/gm, '') 
-	});
-	
-	if (!attempt.error) return;
+  // Debug: Log configuration (without exposing full password)
+  console.log('📧 SMTP Config:', {
+    host: process.env.SMTP_HOST,
+    port: process.env.SMTP_PORT,
+    user: process.env.SMTP_USER,
+    passConfigured: !!process.env.SMTP_PASS,
+    passLength: process.env.SMTP_PASS?.length,
+    from: process.env.EMAIL_FROM
+  });
 
-	// If domain not verified, retry with onboarding sender automatically
-	const e = attempt.error as { statusCode?: number; message?: string };
-	const domainUnverified = e?.statusCode === 403 && typeof e?.message === 'string' && e.message.includes('domain is not verified');
-	if (domainUnverified && from !== defaultFrom) {
-		const retry = await resend.emails.send({ 
-			from: defaultFrom, 
-			to, 
-			subject, 
-			html: content,
-			text: text || content.replace(/<[^>]*>?/gm, '')
-		});
-		if (!retry.error) return;
-		console.error('Resend email error (retry with onboarding failed):', retry.error);
-		throw new Error('Email send failed');
-	}
+  const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: Number(process.env.SMTP_PORT) || 587,
+    secure: false, // use STARTTLS
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS,
+    },
+    // Add connection pooling to prevent auth issues
+    pool: true,
+    maxConnections: 1,
+    rateDelta: 20000,
+    rateLimit: 5,
+  });
 
-	console.error('Resend email error:', attempt.error);
-	throw new Error('Email send failed');
+  try {
+    const info = await transporter.sendMail({
+      from: process.env.EMAIL_FROM,
+      to,
+      subject,
+      text: text || content.replace(/<[^>]*>?/gm, ''),
+      html: content,
+    });
+
+    console.log('✅ Email sent successfully:', info.messageId);
+  } catch (error) {
+    console.error('❌ SMTP sendMail failed:', error);
+    
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('💡 Dev mode: Check console for OTP or fix SMTP config');
+    }
+    
+    // Always throw in production, let dev mode continue
+    if (process.env.NODE_ENV === 'production') {
+      throw error;
+    }
+  } finally {
+    // Close the connection after sending
+    transporter.close();
+  }
 }
-
-

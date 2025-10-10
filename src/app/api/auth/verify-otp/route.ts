@@ -22,7 +22,7 @@ export async function POST(request: Request) {
     }
 
     const [salt, hash] = user.otp.split(':');
-    if (!salt || !hash || !verifyOtp(otp, hash, salt)) {
+    if (!salt || !hash || !verifyOtp(otp, `${salt}:${hash}`)) {
       return NextResponse.json({ error: 'Invalid OTP' }, { status: 400 });
     }
 
