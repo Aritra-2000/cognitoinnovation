@@ -20,18 +20,27 @@ export async function POST(request: Request) {
       update: { otp: `${salt}:${hash}`, otpExpiry: expiry },
     });
 
-    // Send OTP via email (best-effort, but if it fails, surface error)
-    await sendEmail({
-      to: email,
-      subject: 'Your Login OTP',
-      text: `Your OTP is ${otp}. It expires in 5 minutes.`,
-      content: `<p>Your OTP is <strong>${otp}</strong>. It expires in 5 minutes.</p>`
-    });
+    // Send OTP via email. In development, if sending fails, log OTP and continue.
+    try {
+      await sendEmail({
+        to: email,
+        subject: 'Your Login OTP',
+        text: `Your OTP is ${otp}. It expires in 5 minutes.`,
+        content: `<p>Your OTP is <strong>${otp}</strong>. It expires in 5 minutes.</p>`
+      });
+    } catch (e) {
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn('Email send failed in dev; proceeding. OTP:', otp, 'Recipient:', email);
+      } else {
+        throw e;
+      }
+    }
 
-    return NextResponse.json({ ok: true, userId: user.id });
+    return NextResponse.json({ ok: true, userId: user.id, devOtp: process.env.NODE_ENV !== 'production' ? otp : undefined });
   } catch (error) {
     console.error('request-otp error:', error);
-    return NextResponse.json({ error: 'Internal error' }, { status: 500 });
+    const message = error instanceof Error ? error.message : 'Internal error';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
