@@ -22,7 +22,7 @@ export default function NotificationBell({ projectId }: { projectId?: string }) 
           const activities = await apiGet<Array<{ isRead: boolean }>>(`/api/notifications${query}${query ? '&' : '?'}limit=100`);
           const count = (activities || []).filter((a) => a && a.isRead === false).length;
           setUnreadCount(count);
-        } catch (err) {
+        } catch {
           console.error('Error fetching unread count:', error);
         }
       }

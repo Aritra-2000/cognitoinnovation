@@ -8,15 +8,13 @@ import NotificationBell from './components/NotificationBell';
 import Loading from '@/app/loading';
 
 export default function DashboardPage() {
-  const [projects, setProjects] = useState<Array<{ id: string; name: string }>>([]);
+  const [, setProjects] = useState<Array<{ id: string; name: string }>>([]);
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
   const [showNewProjectForm, setShowNewProjectForm] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [projectsLoading, setProjectsLoading] = useState(true);
   const [creatingProject, setCreatingProject] = useState(false);
-  // Remove unused state variables or prefix with _ if they're intentionally unused
-  const [_deletingProject, _setDeletingProject] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/projects')

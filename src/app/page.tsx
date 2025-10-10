@@ -21,8 +21,8 @@ export default function Home() {
       });
       if (!res.ok) throw new Error('Failed to request OTP');
       setStep('otp');
-    } catch (e: any) {
-      setError(e.message ?? 'Something went wrong');
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Something went wrong');
     } finally {
       setLoading(false);
     }
@@ -45,8 +45,8 @@ export default function Home() {
       
       setStep('done');
       window.location.href = '/dashboard';
-    } catch (e: any) {
-      setError(e.message ?? 'Something went wrong');
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Something went wrong');
     } finally {
       setLoading(false);
     }

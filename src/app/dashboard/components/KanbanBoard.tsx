@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { apiPatch, apiPost } from "@/lib/api-client";
 import {
   DndContext,
@@ -35,6 +35,12 @@ type Ticket = {
   updatedAt: string;
   updatedBy?: string;
   updateHistory?: UserUpdate[];
+  updates?: Array<{
+    user?: { email?: string };
+    timestamp?: string;
+    updatedAt?: string;
+    changes?: string | { status?: string };
+  }>;
 };
 
 // ---------------- Columns ----------------
@@ -81,23 +87,23 @@ export default function KanbanBoard({ projectId }: { projectId: string }) {
   const [newTicketDescription, setNewTicketDescription] = useState("");
   const [showNewTicketForm, setShowNewTicketForm] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const { pusher } = useProjectPusher(projectId);
+  useProjectPusher(projectId);
   const isSuperUser = useSuperUserStore((state) => state.enabled);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
   // ---------------- Load Tickets ----------------
 
-  async function loadTickets() {
+  const loadTickets = useCallback(async () => {
     try {
       setIsLoading(true);
       const res = await fetch(`/api/tickets?projectId=${projectId}`);
       if (res.ok) {
         const data = await res.json();
         // Normalize backend `updates` relation into `updateHistory` the UI expects
-        const normalized = (data || []).map((t: any) => ({
+        const normalized = (data || []).map((t: Ticket) => ({
           ...t,
           updateHistory: Array.isArray(t.updates)
-            ? t.updates.map((u: any) => ({
+            ? t.updates.map((u: { user?: { email?: string }; timestamp?: string; updatedAt?: string; changes?: string | { status?: string } }) => ({
                 email: u.user?.email || t.updatedBy || 'unknown',
                 timestamp: u.timestamp || u.updatedAt || t.updatedAt,
                 status: typeof u.changes === 'string' ? u.changes : (u.changes?.status || 'updated'),
@@ -112,11 +118,11 @@ export default function KanbanBoard({ projectId }: { projectId: string }) {
     } finally {
       setIsLoading(false);
     }
-  }
+  }, [projectId]);
 
   useEffect(() => {
     void loadTickets();
-  }, [projectId]);
+  }, [projectId, loadTickets]);
 
   // ---------------- Update Status ----------------
 
@@ -178,7 +184,7 @@ export default function KanbanBoard({ projectId }: { projectId: string }) {
     }
 
     try {
-      const data = await apiPost<any>("/api/tickets", {
+      const data = await apiPost<Ticket>("/api/tickets", {
         projectId,
         title: newTicketTitle,
         description: newTicketDescription,

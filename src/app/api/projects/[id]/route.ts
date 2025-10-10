@@ -4,10 +4,10 @@ import { getCurrentUserFromHeaders } from "@/lib/auth";
 
 export async function DELETE(
   req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const projectId = params.id;
+    const { id: projectId } = await params;
 
     if (!projectId) {
       return NextResponse.json({ error: "Project ID is required" }, { status: 400 });

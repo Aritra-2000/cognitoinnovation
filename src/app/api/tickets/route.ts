@@ -4,11 +4,6 @@ import { triggerProjectUpdate, triggerGlobalUpdate } from '@/lib/pusher';
 // getNotificationStrategy is imported for future use
 import { getCurrentUserFromHeaders } from '@/lib/auth';
 
-interface TicketChanges {
-  title?: { from: string; to: string };
-  status?: { from: string; to: string };
-  description?: { from: string; to: string };
-}
 
 export async function GET(req: Request) {
   try {

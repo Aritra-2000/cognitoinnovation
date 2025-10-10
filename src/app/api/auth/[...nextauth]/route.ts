@@ -1,7 +1,7 @@
-import NextAuth, { type NextAuthConfig, type Session, type User } from 'next-auth';
+import NextAuth from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import { verifyToken } from '@/lib/auth';
-import { JWT } from 'next-auth/jwt';
+import type { NextAuthOptions } from 'next-auth';
 
 declare module 'next-auth' {
   interface User {
@@ -25,7 +25,7 @@ declare module 'next-auth/jwt' {
   }
 }
 
-export const authOptions: NextAuthConfig = {
+export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
       name: 'Credentials',
@@ -37,7 +37,7 @@ export const authOptions: NextAuthConfig = {
           return null;
         }
         
-const token = typeof credentials.token === 'string' ? credentials.token : '';
+        const token = typeof credentials.token === 'string' ? credentials.token : '';
         const user = verifyToken(token);
         return user ? { 
           id: user.id || user.sub,  // Use id if it exists, otherwise fall back to sub
@@ -49,19 +49,19 @@ const token = typeof credentials.token === 'string' ? credentials.token : '';
     }),
   ],
   callbacks: {
-    async session({ session, token }: { session: Session; token: JWT }) {
+    async session({ session, token }) {
       if (token) {
         session.user = {
           ...session.user,
           id: token.sub || '',
           isAdmin: token.isAdmin,
           name: token.name || null,
-          email: token.email || null
+          email: token.email || ''
         };
       }
       return session;
     },
-    async jwt({ token, user }: { token: JWT; user?: User }) {
+    async jwt({ token, user }) {
       if (user) {
         token.sub = user.id;
         token.id = user.id;

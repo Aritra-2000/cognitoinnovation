@@ -40,7 +40,7 @@ export function useProjectPusher(projectId: string) {
 
   useEffect(() => {
     if (pusher && connected && projectId) {
-      const channel = pusher.subscribe(`project-${projectId}`);
+      pusher.subscribe(`project-${projectId}`);
       
       return () => {
         pusher.unsubscribe(`project-${projectId}`);

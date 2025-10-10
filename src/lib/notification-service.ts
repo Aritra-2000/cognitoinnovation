@@ -3,7 +3,6 @@ import { pusherServer } from './pusher';
 import { prisma } from './db';
 import { sendEmail } from './email';
 import { ProjectWithMembers } from '@/types/project';
-import Pusher from 'pusher';
 
 // ... (rest of the imports and interfaces)
 

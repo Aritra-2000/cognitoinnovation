@@ -77,6 +77,3 @@ export function createToken(payload: Omit<JWTPayload, 'iat' | 'exp'>): string {
   return jwt.sign(payload, secret, { expiresIn: '7d' });
 }
 
-// Re-export authOptions from the NextAuth route handler
-import { authOptions } from '../app/api/auth/[...nextauth]/route';
-export { authOptions };

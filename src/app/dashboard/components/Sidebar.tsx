@@ -44,7 +44,7 @@ export default function Sidebar({ selectedProject, onProjectSelect, refreshTrigg
             <div className="ml-3 flex-1">
               <h3 className="text-lg font-semibold text-gray-900">Delete Project</h3>
               <p className="text-sm text-gray-600 mt-1">
-                Are you sure you want to delete <strong>"{project.name}"</strong>? This action cannot be undone.
+                Are you sure you want to delete <strong>&quot;{project.name}&quot;</strong>? This action cannot be undone.
               </p>
             </div>
           </div>
@@ -182,7 +182,7 @@ export default function Sidebar({ selectedProject, onProjectSelect, refreshTrigg
                             if (e.key === 'Enter' || e.key === ' ') {
                               e.preventDefault();
                               e.stopPropagation();
-                              handleDelete(project, e as any);
+                              handleDelete(project, e as unknown as React.MouseEvent);
                             }
                           }}
                           className={`opacity-0 group-hover:opacity-100 p-1.5 rounded-md transition-all ${
