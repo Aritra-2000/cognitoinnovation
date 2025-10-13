@@ -27,8 +27,32 @@ export function usePusher() {
 
     setPusher(newPusher);
 
+    // Global heartbeat regardless of project subscription
+    const sendHeartbeat = async () => {
+      try {
+        await fetch('/api/users/last-seen', { method: 'POST' });
+      } catch {}
+    };
+    void sendHeartbeat();
+    const heartbeatInterval = setInterval(sendHeartbeat, 60_000);
+
+    const sendBeacon = () => {
+      try {
+        const blob = new Blob([], { type: 'application/json' });
+        navigator.sendBeacon('/api/users/last-seen', blob);
+      } catch {}
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') sendBeacon();
+    };
+    window.addEventListener('beforeunload', sendBeacon);
+    document.addEventListener('visibilitychange', onVisibility);
+
     return () => {
       newPusher.disconnect();
+      clearInterval(heartbeatInterval);
+      window.removeEventListener('beforeunload', sendBeacon);
+      document.removeEventListener('visibilitychange', onVisibility);
     };
   }, []);
 
@@ -41,9 +65,18 @@ export function useProjectPusher(projectId: string) {
   useEffect(() => {
     if (pusher && connected && projectId) {
       pusher.subscribe(`project-${projectId}`);
+      // Heartbeat last-seen (best-effort)
+      const sendHeartbeat = async () => {
+        try {
+          await fetch('/api/users/last-seen', { method: 'POST', credentials: 'include' });
+        } catch {}
+      };
+      void sendHeartbeat();
+      const interval = setInterval(sendHeartbeat, 60_000); // every 60s
       
       return () => {
         pusher.unsubscribe(`project-${projectId}`);
+        clearInterval(interval);
       };
     }
   }, [pusher, connected, projectId]);
