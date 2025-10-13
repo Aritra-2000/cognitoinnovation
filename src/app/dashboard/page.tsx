@@ -5,6 +5,7 @@ import KanbanBoard from './components/KanbanBoard';
 import SuperUserToggle from './components/SuperUserToggle';
 import LogoutButton from './components/LogoutButton';
 import NotificationBell from './components/NotificationBell';
+import ActiveUsersBadge from './components/ActiveUsersBadge';
 import Loading from '@/app/loading';
 
 export default function DashboardPage() {
@@ -74,6 +75,7 @@ export default function DashboardPage() {
             </div>
             
             <div className="flex items-center space-x-3 ml-auto">
+              <ActiveUsersBadge />
             {!showNewProjectForm && (
                 <button
                   onClick={() => setShowNewProjectForm(true)}

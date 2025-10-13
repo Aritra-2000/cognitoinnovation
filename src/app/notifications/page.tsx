@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useState } from 'react';
 import { usePusher } from '@/hooks/useSocket';
-import { useSession } from '@/hooks/useSession';
 
 // Utility function to validate date strings
 const isValidDate = (dateString: string): boolean => {
@@ -38,7 +37,6 @@ export default function NotificationsPage() {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(true);
   const { pusher, connected } = usePusher();
-  const { user: currentUser } = useSession();
 
   const markAsRead = async (activityId: string) => {
     try {
@@ -100,11 +98,9 @@ export default function NotificationsPage() {
 
     const channel = pusher.subscribe('global');
     
-    const handleNotification = (data: Activity) => {
-      const expiresAt = new Date(data.expiresAt);
-      if (expiresAt > new Date()) {
-        setActivities(prev => [data, ...prev]);
-      }
+    const handleNotification = () => {
+      // Always refetch from server to include others' updates
+      void fetchActivities();
     };
 
     channel.bind('notification', handleNotification);
@@ -245,24 +241,14 @@ export default function NotificationsPage() {
                         ? 'bg-gradient-to-br from-gray-400 to-gray-500' 
                         : 'bg-gradient-to-br from-blue-500 to-indigo-600'
                     }`}>
-                      {activity.user?.id === currentUser?.sub 
-                        ? '👤'
-                        : (activity.user?.name || activity.user?.email || 'U').charAt(0).toUpperCase()
-                      }
+                      🔔
                     </div>
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between gap-3 mb-2">
                         <p className={`font-medium leading-relaxed ${activity.isRead ? 'text-gray-600' : 'text-gray-900'}`}>
-                          {activity.user?.id === currentUser?.sub ? (
-                            <span className="font-bold text-blue-600">You</span>
-                          ) : activity.user?.name ? (
-                            <span className="font-bold text-blue-600">{activity.user.name}</span>
-                          ) : activity.user?.email ? (
-                            <span className="font-bold text-blue-600">{activity.user.email.split('@')[0]}</span>
-                          ) : null}{' '}
                           <span className={activity.isRead ? 'text-gray-500' : 'text-gray-700'}>
-                            {activity.message.replace(/^(\w+\s+)?/, '')}
+                            {activity.message}
                           </span>
                         </p>
                         {!activity.isRead && (

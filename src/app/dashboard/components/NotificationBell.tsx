@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from 'react';
 import { Bell } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 import { usePusher } from '@/hooks/useSocket';
 import { apiGet } from '@/lib/api-client';
 
@@ -39,19 +40,23 @@ export default function NotificationBell({ projectId }: { projectId?: string }) 
     if (!pusher) return;
 
     const globalChannel = pusher.subscribe('global');
-    const handleGlobalNotification = () => {
+    const handleGlobalNotification = (payload?: { type?: string; projectId?: string; message?: string }) => {
       setUnreadCount(prev => prev + 1);
       setIsAnimating(true);
       setTimeout(() => setIsAnimating(false), 1000);
+      const msg = payload?.message || (payload?.type ? `New ${payload.type.replace(':', ' ')}` : 'New notification');
+      toast(msg);
     };
     globalChannel.bind('notification', handleGlobalNotification);
 
     // Also listen to project-specific ticket updates if projectId is present
     let projectChannel: ReturnType<typeof pusher.subscribe> | null = null;
-    const handleProjectTicketUpdate = () => {
+    const handleProjectTicketUpdate = (payload?: { ticketId?: string; updatedBy?: string }) => {
       setUnreadCount(prev => prev + 1);
       setIsAnimating(true);
       setTimeout(() => setIsAnimating(false), 1000);
+      const who = payload?.updatedBy ? ` by ${payload.updatedBy.split('@')[0]}` : '';
+      toast(`Ticket updated${who}`);
     };
     if (projectId) {
       projectChannel = pusher.subscribe(`project-${projectId}`);

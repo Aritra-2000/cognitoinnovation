@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { triggerProjectUpdate, triggerGlobalUpdate } from '@/lib/pusher';
 // getNotificationStrategy is imported for future use
 import { getCurrentUserFromHeaders } from '@/lib/auth';
+import { notifyTicketUpdate } from '@/lib/notification-service';
 
 
 export async function GET(req: Request) {
@@ -81,29 +82,22 @@ export async function POST(req: Request) {
       }
     });
 
-    // Create Activity notifications for all project members except the actor
-    const projectMembers = await prisma.projectMember.findMany({
-      where: { projectId },
-      select: { userId: true }
-    });
-    // Notify all project members, including the actor, so the user sees their own activity
-    const recipients = Array.from(new Set([
-      ...projectMembers.map((m: { userId: string | null }) => m.userId).filter(Boolean),
-      user.id,
-    ] as string[]));
-    if (recipients.length > 0) {
+    // Create Activity notifications for ALL users so everyone sees the same feed
+    const allUsers = await prisma.user.findMany({ select: { id: true } });
+    const allRecipients = allUsers.map(u => u.id).filter(Boolean) as string[];
+    if (allRecipients.length > 0) {
+      const actor = (user as { name?: string; email?: string }).name || (user.email ? user.email.split('@')[0] : 'someone');
       const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
       await prisma.activity.createMany({
-        data: recipients.map(userId => ({
+        data: allRecipients.map(userId => ({
           userId,
-          // projectId omitted for compatibility with current Prisma client
-          message: `Ticket created: ${title}`,
+          message: `Ticket created by ${actor}: ${title}`,
           expiresAt,
         }))
       });
     }
 
-    // Trigger real-time updates
+    // Trigger real-time and email updates
     await triggerProjectUpdate(projectId, 'ticket:created', {});
     await triggerGlobalUpdate('ticket:created', { projectId });
     await triggerGlobalUpdate('notification', {
@@ -111,6 +105,8 @@ export async function POST(req: Request) {
       projectId,
       timestamp: new Date().toISOString(),
     });
+    // Email offline users
+    await notifyTicketUpdate(ticket.id, projectId, user.email || 'unknown', 'created', title);
 
     return NextResponse.json(ticket);
   } catch (error) {
@@ -186,41 +182,38 @@ export async function PATCH(req: Request) {
       });
     }
 
-    // Send a global notification for the status change
-    if (status && status !== currentTicket.status) {
-      await triggerGlobalUpdate('notification', {
-        type: 'ticket:status-updated',
-        ticketId: updatedTicket.id,
-        ticketTitle: updatedTicket.title,
-        oldStatus: currentTicket.status,
-        newStatus: status,
-        updatedBy: user.email,
-        projectId: currentTicket.projectId,
-        timestamp: new Date().toISOString()
-      });
+    // Always send a global notification
+    await triggerGlobalUpdate('notification', {
+      type: status && status !== currentTicket.status ? 'ticket:status-updated' : 'ticket:updated',
+      ticketId: updatedTicket.id,
+      ticketTitle: updatedTicket.title,
+      oldStatus: currentTicket.status,
+      newStatus: status ?? currentTicket.status,
+      updatedBy: user.email,
+      projectId: currentTicket.projectId,
+      timestamp: new Date().toISOString()
+    });
 
-      // Create Activity notifications for all project members except the actor
-      const projectMembers = await prisma.projectMember.findMany({
-        where: { projectId: currentTicket.projectId },
-        select: { userId: true }
+    // Create Activity notifications for ALL users so everyone sees the same feed
+    const allUsersUpdate = await prisma.user.findMany({ select: { id: true } });
+    const recipients = allUsersUpdate.map(u => u.id).filter(Boolean) as string[];
+    if (recipients.length > 0) {
+      const actor = (user as { name?: string; email?: string }).name || (user.email ? user.email.split('@')[0] : 'someone');
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      await prisma.activity.createMany({
+        data: recipients.map(userId => ({
+          userId,
+          message: status && status !== currentTicket.status
+            ? `Ticket status updated by ${actor}: ${updatedTicket.title} → ${status}`
+            : `Ticket updated by ${actor}: ${updatedTicket.title}`,
+          expiresAt,
+        }))
       });
-      // Notify all project members, including the actor
-      const recipients = Array.from(new Set([
-        ...projectMembers.map((m: { userId: string | null }) => m.userId).filter(Boolean),
-        user.id,
-      ] as string[]));
-      if (recipients.length > 0) {
-        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-        await prisma.activity.createMany({
-          data: recipients.map(userId => ({
-            userId,
-            // projectId omitted for compatibility
-            message: `Ticket status updated: ${updatedTicket.title} → ${status}`,
-            expiresAt,
-          }))
-        });
-      }
     }
+
+    // Email offline users
+    const action = status && status !== currentTicket.status ? 'status_changed' : 'updated';
+    await notifyTicketUpdate(updatedTicket.id, currentTicket.projectId!, user.email || 'unknown', action, updatedTicket.title, status);
 
     return NextResponse.json(updatedTicket);
   } catch (error) {
