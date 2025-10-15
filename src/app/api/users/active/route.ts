@@ -38,8 +38,7 @@ export async function GET() {
       status: 200,
       headers: corsHeaders
     });
-  } catch (error) {
-    console.error('Error fetching active users:', error);
+  } catch {
     return NextResponse.json(
       { error: 'Failed to fetch active users' },
       { status: 500, headers: corsHeaders }
@@ -55,7 +54,6 @@ export async function POST(req: Request) {
     if (!user) user = getCurrentUserFromHeaders(req.headers);
 
     if (!user) {
-      console.log('No user found in headers or cookies');
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401, headers: corsHeaders }
@@ -69,8 +67,7 @@ export async function POST(req: Request) {
       { success: true },
       { status: 200, headers: corsHeaders }
     );
-  } catch (error) {
-    console.error('Error updating active status:', error);
+  } catch {
     return NextResponse.json(
       { error: 'Failed to update active status' },
       { status: 500, headers: corsHeaders }

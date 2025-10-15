@@ -1,15 +1,13 @@
-// src/lib/notification-service.ts
 import { pusherServer } from './pusher';
 import { prisma } from './db';
 import { sendEmail } from './email';
 import { ProjectWithMembers } from '@/types/project';
 
-// Time window to consider a user as "active" (5 minutes)
-const ACTIVE_WINDOW_MS = 5 * 60 * 1000;
+const ACTIVE_WINDOW_MS = (Number(process.env.ACTIVE_WINDOW_MS)
+  || (Number(process.env.ACTIVE_WINDOW_MINUTES) || 5) * 60 * 1000);
 
 export async function notifyTicketUpdate(ticketId: string, projectId: string, updaterEmail: string, action: 'created' | 'updated' | 'status_changed' = 'updated', ticketTitle?: string, newStatus?: string) {
   try {
-    // Get all project members with user details
     const project = await prisma.project.findUnique({
       where: { id: projectId },
       include: {
@@ -23,7 +21,6 @@ export async function notifyTicketUpdate(ticketId: string, projectId: string, up
 
     if (!project) return;
 
-    // Consider users active if they updated in the last 5 minutes
     const activeSince = new Date(Date.now() - ACTIVE_WINDOW_MS);
     const activeUsers = await prisma.user.findMany({
       where: { updatedAt: { gte: activeSince } },
@@ -31,14 +28,12 @@ export async function notifyTicketUpdate(ticketId: string, projectId: string, up
     });
     const onlineUserIds: string[] = activeUsers.map(u => u.id);
 
-    // Send real-time notifications to online users
     await pusherServer.trigger(`project-${projectId}`, 'ticket:updated', {
       ticketId,
       updatedBy: updaterEmail,
       timestamp: new Date().toISOString()
     });
 
-    // Also broadcast a global notification so all users (regardless of selected project) get the popup
     await pusherServer.trigger('global', 'notification', {
       type: 'ticket:updated',
       projectId,
@@ -47,21 +42,26 @@ export async function notifyTicketUpdate(ticketId: string, projectId: string, up
       timestamp: new Date().toISOString()
     });
 
-    // Send emails to offline users who have visited before
-    const offlineMembers = project.members
-      .filter((member: { user?: { id: string; email?: string | null; updatedAt?: Date } | null }) => 
-        !!member.user?.email && 
-        member.user.email !== updaterEmail &&
-        !onlineUserIds.includes(member.user.id) &&
-        member.user.updatedAt && // User has visited before (has a last seen timestamp)
-        member.user.updatedAt < activeSince // User is offline (last seen > 5 minutes ago)
-      )
-      .map((member: { user?: { id: string; email: string; name?: string | null } | null }) => member.user!);
+    const offlineMembers = await prisma.user.findMany({
+      where: {
+        id: { notIn: onlineUserIds },
+        email: {
+          notIn: [updaterEmail, ''],
+          contains: '@'
+        }
+      },
+      select: { id: true, email: true, name: true },
+      distinct: ['email']
+    });
 
-    console.log(`📧 Sending emails to ${offlineMembers.length} offline team members for ${action}`);
-
+    const sentEmails = new Set<string>();
     for (const member of offlineMembers) {
-      const memberName = member.name || member.email.split('@')[0];
+      const email = member.email;
+      if (!email || sentEmails.has(email) || !email.includes('@')) {
+        continue;
+      }
+      sentEmails.add(email);
+      const memberName = member.name || email.split('@')[0];
       const updaterName = updaterEmail.split('@')[0];
       
       let subject = '';
@@ -119,7 +119,7 @@ export async function notifyTicketUpdate(ticketId: string, projectId: string, up
           `;
           break;
           
-        default: // 'updated'
+        default:
           subject = `Ticket Updated: ${ticketTitle || ticketId}`;
           emailContent = `
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -150,25 +150,20 @@ export async function notifyTicketUpdate(ticketId: string, projectId: string, up
         content: emailContent
       });
     }
-  } catch (error) {
-    console.error('Error in notification service:', error);
+  } catch {
   }
 }
 
-// Helper function to trigger project-specific updates
 export async function triggerProjectUpdate(projectId: string, event: string, data: Record<string, unknown>) {
   try {
     await pusherServer.trigger(`project-${projectId}`, event, data);
-  } catch (error) {
-    console.error('Error triggering project update:', error);
+  } catch {
   }
 }
 
-// Helper function to trigger global updates
 export async function triggerGlobalUpdate(event: string, data: Record<string, unknown>) {
   try {
     await pusherServer.trigger('global', event, data);
-  } catch (error) {
-    console.error('Error triggering global update:', error);
+  } catch {
   }
 }

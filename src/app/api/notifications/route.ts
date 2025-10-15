@@ -2,9 +2,6 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { getCurrentUserFromHeaders } from '@/lib/auth';
 
-// GET /api/notifications
-// Returns the authenticated user's non-expired notifications (activities)
-// Optional query: ?projectId=...&limit=100
 export async function GET(req: Request) {
   try {
     const user = await getCurrentUserFromHeaders(req.headers);
@@ -13,8 +10,6 @@ export async function GET(req: Request) {
     }
 
     const { searchParams } = new URL(req.url);
-    // projectId parameter is intentionally not used to maintain compatibility
-    // with existing clients that may not have the projectId field on Activity
     const limitParam = searchParams.get('limit');
     const take = Math.min(Math.max(parseInt(limitParam || '100', 10) || 100, 1), 200);
 
