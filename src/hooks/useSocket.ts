@@ -9,25 +9,21 @@ export function usePusher() {
 
   useEffect(() => {
     if (!process.env.NEXT_PUBLIC_PUSHER_KEY) {
-      console.warn('Pusher key not configured');
       return;
     }
 
     const newPusher = pusherClient;
     
     newPusher.connection.bind('connected', () => {
-      console.log('Connected to Pusher');
       setConnected(true);
     });
 
     newPusher.connection.bind('disconnected', () => {
-      console.log('Disconnected from Pusher');
       setConnected(false);
     });
 
     setPusher(newPusher);
 
-    // Global heartbeat regardless of project subscription
     const sendHeartbeat = async () => {
       try {
         await fetch('/api/users/last-seen', { method: 'POST' });
@@ -65,14 +61,13 @@ export function useProjectPusher(projectId: string) {
   useEffect(() => {
     if (pusher && connected && projectId) {
       pusher.subscribe(`project-${projectId}`);
-      // Heartbeat last-seen (best-effort)
       const sendHeartbeat = async () => {
         try {
           await fetch('/api/users/last-seen', { method: 'POST', credentials: 'include' });
         } catch {}
       };
       void sendHeartbeat();
-      const interval = setInterval(sendHeartbeat, 60_000); // every 60s
+      const interval = setInterval(sendHeartbeat, 60_000);
       
       return () => {
         pusher.unsubscribe(`project-${projectId}`);

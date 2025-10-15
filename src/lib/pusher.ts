@@ -1,7 +1,6 @@
 import Pusher from 'pusher';
 import PusherClient from 'pusher-js';
 
-// Server-side Pusher instance
 export const pusherServer = new Pusher({
   appId: process.env.PUSHER_APP_ID!,
   key: process.env.PUSHER_KEY!,
@@ -10,11 +9,10 @@ export const pusherServer = new Pusher({
   useTLS: true,
 });
 
-// Client-side Pusher instance with enhanced configuration
 export const pusherClient = new PusherClient(
-  process.env.NEXT_PUBLIC_PUSHER_KEY || 'YOUR_PUSHER_KEY', // Fallback for development
+  process.env.NEXT_PUBLIC_PUSHER_KEY || 'YOUR_PUSHER_KEY',
   {
-    cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER || 'ap2', // Changed default to ap2
+    cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER || 'ap2',
     forceTLS: true,
     authEndpoint: '/api/pusher/auth',
     auth: {
@@ -22,29 +20,14 @@ export const pusherClient = new PusherClient(
         'Content-Type': 'application/json',
       },
     },
-    // Enable logging for debugging
     enableStats: true,
-    // Enable WebSocket transport
     enabledTransports: ['ws', 'wss', 'xhr_streaming', 'xhr_polling'],
-    // Additional options for better connectivity
     wsHost: `ws-${process.env.NEXT_PUBLIC_PUSHER_CLUSTER || 'ap2'}.pusher.com`,
     wsPort: 80,
     wssPort: 443,
     disableStats: false,
   }
 );
-
-// Log Pusher connection state changes
-pusherClient.connection.bind('state_change', (states: { previous: string; current: string }) => {
-  console.log('Pusher connection state changed:', states);
-});
-
-pusherClient.connection.bind('error', (err: Error) => {
-  console.error('Pusher connection error:', err);
-});
-
-pusherClient.connection.bind('connected', () => {
-  console.log('Pusher connected successfully');});
 
 export function triggerProjectUpdate<T = unknown>(projectId: string, event: string, data: T) {
   pusherServer.trigger(`project-${projectId}`, event, data);

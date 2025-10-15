@@ -14,8 +14,7 @@ export async function POST() {
 
     await prisma.user.update({ where: { id: user.id }, data: { updatedAt: new Date() } });
     return NextResponse.json({ ok: true });
-  } catch (error) {
-    console.error('last-seen error:', error);
+  } catch {
     return NextResponse.json({ ok: false }, { status: 500 });
   }
 }
